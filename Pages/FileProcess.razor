@@ -1,0 +1,161 @@
+﻿@page "/fileprocess"
+@inject IJSRuntime JSRuntime
+@using System.IO;
+
+<div>
+    @*<div class="inputArea">
+        <InputFile id="inputDefault"
+                   OnChange="OnInputFileChange"
+                   accept="image/png,image/gif,image/jpeg" />
+    </div>*@
+
+    <div class="dropArea @dropClass">
+        Drag and drop your files here or click to open file loading dialogue...
+        <InputFile id="inputDrop"
+                   OnChange="OnInputFileChange"
+                   @ondragenter="HandleDragEnter"
+                   @ondragleave="HandleDragLeave"
+                   accept=".txt, .xlsx, .json"
+                   multiple />
+    </div>
+
+    @if (files != null && files.Count > 1)
+    {
+        <div>
+            File Names:
+            <ul>
+                @foreach (var file in files)
+                {
+                    <li>@file.Name</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div>Message:</div>
+    @if (msgs.Count > 0)
+    {
+        foreach (var m in msgs)
+        {
+            <br />
+            <p>@m</p>
+        }
+    }
+</div>
+
+
+@code {
+    //breakpoints work with Chrome
+
+    IList<IBrowserFile> files;
+    List<string> msgs = new List<string>();
+    string dropClass = string.Empty;
+    const int maxFileSize = 10485760;
+
+    private void HandleDragEnter()
+    {
+        dropClass = "dropAreaDrug";
+    }
+
+    private void HandleDragLeave()
+    {
+        dropClass = string.Empty;
+    }
+
+    async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        dropClass = string.Empty;
+        try
+        {
+            msgs.Clear();
+            if (e.FileCount > 1)
+            {
+                files = e.GetMultipleFiles().ToList();
+                msgs.Clear();
+                msgs.AddRange(await ProcessFiles(files));
+            }
+            else
+            {
+                files = new List<IBrowserFile>();
+                files.Add(e.File);
+
+                var feedback = await ProcessFile(e.File);
+
+                msgs.Add(feedback);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<List<string>> ProcessFiles(IList<IBrowserFile> files)
+    {
+        var list = new List<string>();
+        //var guid = Guid.NewGuid().ToString();
+        foreach (var file in files)
+        {
+            var m = await ProcessFile(file); // guid);
+            list.Add(m);
+        }
+        return list;
+    }
+
+    private async Task<string> ProcessFile(IBrowserFile file)
+    {
+        string ret = "Finish processing " + file.Name;
+        using (var stream = file.OpenReadStream(maxFileSize))
+        {
+            using (var reader = new StreamReader(stream))
+            {
+                var content = await reader.ReadToEndAsync(); //synchronous read not supported .ReadToEnd();
+                var bytes = System.Text.Encoding.ASCII.GetBytes(content);
+                //output processed file - file export / download demo
+                await ExportBinaryFile(bytes, file.Name + "_processed.bin");
+            }
+        }
+
+
+        return ret;
+    }
+
+    public async Task ExportFile()
+    {
+        byte[] data = new byte[3];
+        data[0] = 99;
+        data[1] = 55;
+        data[2] = 1;
+        string fn = "test.bin";
+
+        await ExportBinaryFile(data, fn);
+
+    }
+
+    public async Task ExportTextFile(byte[] bytes, string fileName)
+    {
+        await JSRuntime.InvokeVoidAsync(
+            "downloadFromByteArray",
+            new
+            {
+                ByteArray = bytes,
+                FileName = fileName,
+                ContentType = "text/plain"
+            });
+    }
+
+    public async Task ExportBinaryFile(byte[] bytes, string fileName)
+    {
+
+        await JSRuntime.InvokeVoidAsync(
+        "downloadFromByteArray",
+        new
+        {
+            ByteArray = bytes,
+            FileName = fileName,
+            ContentType = "application/octet-stream"
+        });
+    }
+
+}
